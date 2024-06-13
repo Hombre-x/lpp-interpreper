@@ -5,9 +5,10 @@ import org.antlr.v4.runtime.CommonTokenStream
 
 import LPPLexer
 import LPPParser
-import org.antlr.v4.runtime.CodePointCharStream
 
-class Interpreter(input: String) {
+import utils.tlc
+
+class Translator(input: String) {
 
     private val test = """       
         inicio
@@ -17,14 +18,14 @@ class Interpreter(input: String) {
 
     """.trimIndent()
 
-    private val charStream  = CharStreams.fromString(input)
+    private val charStream  = CharStreams.fromString(input.tlc())
     private val tokenSource = LPPLexer(charStream)
     private val tokenStream = CommonTokenStream(tokenSource)
     private val parser      = LPPParser(tokenStream)
     private val tree        = parser.program()
-    private val visitor     = LPPInterpreter()
+    private val visitor     = LPPTranslator()
 
-    fun interpret(): String =
+    fun translate(): String =
         "${visitor.visit(tree)}\n"
 
 }

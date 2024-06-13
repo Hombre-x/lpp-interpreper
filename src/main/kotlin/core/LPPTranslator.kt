@@ -1,13 +1,11 @@
 package core
 
 import LPPBaseVisitor
-import org.antlr.v4.runtime.tree.ParseTree
-import org.antlr.v4.runtime.tree.TerminalNode
 
 import symbols.literals
 import symbols.operators
 
-class LPPInterpreter : LPPBaseVisitor<String?>() {
+class LPPTranslator : LPPBaseVisitor<String?>() {
 
     override fun visitProgram(ctx: LPPParser.ProgramContext?): String {
 
@@ -29,17 +27,17 @@ class LPPInterpreter : LPPBaseVisitor<String?>() {
     }
 
     override fun visitInitializations(ctx: LPPParser.InitializationsContext?): String? {
-        val registers    = ctx?.register()?.joinToString("\n") { visit(it) ?: "" } ?: ""
+        val registers = ctx?.register()?.joinToString("\n") { visit(it) ?: "" } ?: ""
         val declarations = visit(ctx?.declarations()) ?: ""
-        val functions    = ctx?.function()?.joinToString("\n") { visit(it) ?: "" } ?: ""
+        val functions = ctx?.function()?.joinToString("\n") { visit(it) ?: "" } ?: ""
+        val procedures = ctx?.procedure()?.joinToString("\n") { visit(it) ?: "" } ?: ""
 
-        val initializations = """
+        return """
             $registers
             $declarations
+            $procedures
             $functions
         """.trimIndent()
-
-        return initializations
     }
 
     // Declarations
@@ -50,9 +48,14 @@ class LPPInterpreter : LPPBaseVisitor<String?>() {
     }
 
     override fun visitDeclaration(ctx: LPPParser.DeclarationContext?): String? {
-        val declar = "let ${visit(ctx?.ids())};"
+        val typeAssign = "${visit(ctx?.type())}"
+        val declar = "let ${visit(ctx?.ids())}$typeAssign;"
         return declar
     }
+
+    override fun visitType(ctx: LPPParser.TypeContext?): String? =
+        ctx?.register_type()?.ID()?.let { " = new ${it.text.replaceFirstChar { it.uppercaseChar() }}()" } ?: ""
+
 
     override fun visitIds(ctx: LPPParser.IdsContext?): String =
         ctx?.children?.joinToString("") { it.text } ?: ""
@@ -67,23 +70,15 @@ class LPPInterpreter : LPPBaseVisitor<String?>() {
             ctx?.register_attribute()
                 ?.map { visit(it) }
 
-        val constructorArgs = registerAttrs?.joinToString(", ") ?: ""
-        val constructorMethods =
-            registerAttrs?.joinToString("\n") { "this.$it = $it;" } ?: ""
+        val fields =
+            registerAttrs?.joinToString("\n") { "$it;" } ?: ""
 
-        val jsClass = """ 
-            class $registerType {
-                 constructor($constructorArgs) {
-                     $constructorMethods
-                 }
-             }
-            """.trimIndent()
-
-        return jsClass
+        return """class $registerType { $fields }"""
     }
 
     override fun visitRegister_attribute(ctx: LPPParser.Register_attributeContext?): String {
-        return ctx?.ID()?.text ?: ""
+        val maybeType = "${visit(ctx?.type())}"
+        return "${ctx?.ID()?.text}$maybeType"
     }
 
     // Parameters
@@ -99,7 +94,7 @@ class LPPInterpreter : LPPBaseVisitor<String?>() {
 
     override fun visitProcedure(ctx: LPPParser.ProcedureContext?): String? {
         val procedureId = ctx?.ID()?.text
-        val procedureParams = visit(ctx?.params()) ?: ""
+        val procedureParams = ctx?.params()?.let { visit(it) } ?: ""
         val procedureDeclarations = visit(ctx?.declarations()) ?: ""
         val procedureBody = visit(ctx?.statements()) ?: ""
 
@@ -117,7 +112,7 @@ class LPPInterpreter : LPPBaseVisitor<String?>() {
     // Functions
     override fun visitFunction(ctx: LPPParser.FunctionContext?): String? {
         val functionId = ctx?.ID()?.text
-        val functionParams = visit(ctx?.params()) ?: ""
+        val functionParams = ctx?.params()?.let { visit(it) } ?: ""
         val functionDeclarations = visit(ctx?.declarations()) ?: ""
         val functionBody = visit(ctx?.function_body())
 
@@ -157,7 +152,8 @@ class LPPInterpreter : LPPBaseVisitor<String?>() {
 
     override fun visitLlamar(ctx: LPPParser.LlamarContext?): String {
         val id = ctx?.llamar_p()?.ID()?.text ?: ""
-        return ctx?.llamar_p()?.function_params()?.let { "$id(${visit(it)});" } ?: "$id();"
+        return ctx?.llamar_p()?.function_params()
+            ?.let { "$id${visit(it)};" } ?: "console.log(\"\");"
     }
 
     override fun visitLea(ctx: LPPParser.LeaContext?): String? =
@@ -327,8 +323,10 @@ class LPPInterpreter : LPPBaseVisitor<String?>() {
         return "$id$variableAccessP"
     }
 
-    override fun visitRegister_access(ctx: LPPParser.Register_accessContext?): String =
-         ".${ctx?.ID()?.text}"
+    override fun visitRegister_access(ctx: LPPParser.Register_accessContext?): String {
+        val ids = ctx?.ID()?.joinToString(".") { it.text } ?: ""
+        return ".$ids"
+    }
 
 
     override fun visitArray_accesses(ctx: LPPParser.Array_accessesContext?): String =
@@ -340,7 +338,7 @@ class LPPInterpreter : LPPBaseVisitor<String?>() {
     }
 
     override fun visitFunction_params(ctx: LPPParser.Function_paramsContext?): String =
-        ctx?.expr_params()?.let { "(${visit(it)})" } ?: "()"
+        "(${ctx?.expr_params()?.let { "${visit(it)}" }})"
 
 
     // TODO: Somehow im not visiting expr anywhere
